@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, Laptop, MoonStar, SunMedium } from "lucide-react";
-import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ThemeMode } from "@/types/dashboard";
+import { useTheme, type ThemeMode } from "@/hooks/useTheme";
 
 const options: Array<{ label: string; value: ThemeMode; icon: typeof SunMedium }> = [
   { label: "Light", value: "light", icon: SunMedium },

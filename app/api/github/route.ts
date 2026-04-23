@@ -66,6 +66,9 @@ interface RecentCommit {
   committedAt: string;
 }
 
+const MAX_REPO_PAGES = 3;
+const REPOS_PER_PAGE = 100;
+
 function getGithubHeaders() {
   const token = process.env.GITHUB_TOKEN;
 
@@ -89,6 +92,24 @@ async function fetchGithubJson<T>(url: string): Promise<{ data: T; response: Res
 
   const data = (await response.json()) as T;
   return { data, response };
+}
+
+async function fetchAllRepos(username: string, pageSize: number) {
+  const repos: GithubRepo[] = [];
+  let lastResponse: Response | null = null;
+
+  for (let page = 1; page <= MAX_REPO_PAGES; page += 1) {
+    const reposUrl = `${GITHUB_API_BASE}/users/${username}/repos?sort=updated&per_page=${pageSize}&page=${page}`;
+    const { data, response } = await fetchGithubJson<GithubRepo[]>(reposUrl);
+    repos.push(...data);
+    lastResponse = response;
+
+    if (data.length < pageSize) {
+      break;
+    }
+  }
+
+  return { repos, response: lastResponse };
 }
 
 function isValidGithubUsername(username: string) {
@@ -135,14 +156,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userUrl = `${GITHUB_API_BASE}/users/${username}`;
-    const reposUrl = `${GITHUB_API_BASE}/users/${username}/repos?sort=updated&per_page=${perPage}&page=${page}`;
-
-    const [{ data: user }, { data: repos, response: reposResponse }] = await Promise.all([
+    const [{ data: user }, repoResult] = await Promise.all([
       fetchGithubJson<GithubUser>(userUrl),
-      fetchGithubJson<GithubRepo[]>(reposUrl),
+      fetchAllRepos(username, REPOS_PER_PAGE),
     ]);
+    const allRepos = repoResult.repos;
+    const paginatedRepos = allRepos.slice((page - 1) * perPage, page * perPage);
+    const reposResponse = repoResult.response;
 
-    const commitSourceRepos = repos
+    const commitSourceRepos = allRepos
       .filter((repo) => !repo.fork && !repo.archived)
       .sort((a, b) => new Date(b.pushed_at).getTime() - new Date(a.pushed_at).getTime())
       .slice(0, 3);
@@ -173,19 +195,20 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => new Date(b.committedAt).getTime() - new Date(a.committedAt).getTime())
       .slice(0, 12);
 
-    const linkHeader = reposResponse.headers.get('link');
-    const hasNextPage = typeof linkHeader === 'string' && linkHeader.includes('rel="next"');
+    const hasNextPage = page * perPage < allRepos.length;
 
     return NextResponse.json(
       {
         user,
-        repos,
+        repos: paginatedRepos,
+        allRepos,
         recentCommits,
         meta: {
           page,
           perPage,
           hasNextPage,
-          rateLimitRemaining: reposResponse.headers.get('x-ratelimit-remaining'),
+          totalRepos: allRepos.length,
+          rateLimitRemaining: reposResponse?.headers.get('x-ratelimit-remaining') ?? null,
         },
       },
       { status: 200 },

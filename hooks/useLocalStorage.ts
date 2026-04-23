@@ -11,7 +11,7 @@ function readLocalStorageValue<T>(key: string, initialValue: T): T {
     const item = window.localStorage.getItem(key);
     return item ? (JSON.parse(item) as T) : initialValue;
   } catch (error) {
-    console.warn(`Failed to read localStorage key “${key}”`, error);
+    console.warn(`Failed to read localStorage key "${key}"`, error);
     return initialValue;
   }
 }
@@ -25,32 +25,32 @@ export function useLocalStorage<T>(
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStoredValue(readLocalStorageValue<T>(key, initialValue));
   }, [key, initialValue]);
 
   const setValue: Dispatch<SetStateAction<T>> = useCallback(
     (value) => {
       try {
-        setStoredValue((currentValue) => {
-          const nextValue =
-            value instanceof Function ? value(currentValue) : value;
+        const currentValue = readLocalStorageValue<T>(key, initialValue);
+        const nextValue =
+          value instanceof Function ? value(currentValue) : value;
 
-          if (isBrowser) {
-            window.localStorage.setItem(key, JSON.stringify(nextValue));
-            window.dispatchEvent(
-              new CustomEvent("local-storage", {
-                detail: { key, value: nextValue },
-              }),
-            );
-          }
+        setStoredValue(nextValue);
 
-          return nextValue;
-        });
+        if (isBrowser) {
+          window.localStorage.setItem(key, JSON.stringify(nextValue));
+          window.dispatchEvent(
+            new CustomEvent("local-storage", {
+              detail: { key, value: nextValue },
+            }),
+          );
+        }
       } catch (error) {
-        console.warn(`Failed to set localStorage key “${key}”`, error);
+        console.warn(`Failed to set localStorage key "${key}"`, error);
       }
     },
-    [key],
+    [initialValue, key],
   );
 
   const removeValue = useCallback(() => {
@@ -65,7 +65,7 @@ export function useLocalStorage<T>(
         }),
       );
     } catch (error) {
-      console.warn(`Failed to remove localStorage key “${key}”`, error);
+      console.warn(`Failed to remove localStorage key "${key}"`, error);
     }
   }, [initialValue, key]);
 

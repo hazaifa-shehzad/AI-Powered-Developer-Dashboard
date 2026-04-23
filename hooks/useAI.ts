@@ -70,6 +70,7 @@ export function useAI(options: UseAIOptions = {}): UseAIResult {
 
   useEffect(() => {
     if (!autoFetch) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchAITip();
   }, [autoFetch, fetchAITip]);
 

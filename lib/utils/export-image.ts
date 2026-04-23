@@ -1,4 +1,5 @@
-import { toJpeg, toPng } from "html-to-image";
+// Dynamically import `html-to-image` at runtime to avoid server-side bundling
+// and TurboPack issues when running in Next.js dev/SSR environments.
 
 export type ExportImageFormat = "png" | "jpeg";
 
@@ -38,6 +39,10 @@ export async function exportElementAsImage(
     pixelRatio,
     backgroundColor,
   };
+
+  // Load html-to-image only in the browser when this function is invoked.
+  const htmlToImage = await import('html-to-image');
+  const { toJpeg, toPng } = htmlToImage as any;
 
   const dataUrl =
     format === "jpeg"

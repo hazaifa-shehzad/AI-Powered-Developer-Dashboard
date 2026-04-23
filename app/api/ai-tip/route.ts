@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface HuggingFaceResponseItem {
   generated_text?: string;
@@ -8,6 +8,13 @@ interface HuggingFaceError {
   error?: string;
 }
 
+const fallbackTips = [
+  'Move derived UI state out of effects when you can compute it during render. Fewer effects means fewer stale-sync bugs.',
+  'When rendering lists, keep keys stable across refreshes. Index keys are fine for static content, but they break stateful rows.',
+  'Validate API input at the route boundary, not inside components. It keeps client code lean and makes failures easier to reason about.',
+  'Prefer returning shaped fallback data from server routes over surfacing provider configuration errors directly in the UI.',
+];
+
 function cleanTip(rawText: string) {
   return rawText
     .replace(/^\s*(tip|answer)\s*[:\-]\s*/i, '')
@@ -16,18 +23,30 @@ function cleanTip(rawText: string) {
     .trim();
 }
 
-export async function GET() {
+function getFallbackTip(topic?: string | null, seed?: string | null) {
+  const key = `${topic ?? ''}-${seed ?? `${Date.now()}-${Math.random()}`}`;
+  const hash = [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return fallbackTips[hash % fallbackTips.length];
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const topic = searchParams.get('topic')?.trim() ?? null;
+  const seed = searchParams.get('seed');
+
   try {
     const apiKey = process.env.HUGGINGFACE_API_KEY;
     const model = process.env.HUGGINGFACE_MODEL ?? 'google/flan-t5-large';
+    const fallbackTip = getFallbackTip(topic, seed);
 
     if (!apiKey) {
       return NextResponse.json(
         {
-          error:
-            'HUGGINGFACE_API_KEY is missing in .env.local. Add it to enable AI-generated coding tips.',
+          tip: fallbackTip,
+          provider: 'local',
+          model: 'curated-fallback',
         },
-        { status: 500 },
+        { status: 200 },
       );
     }
 
@@ -56,30 +75,45 @@ export async function GET() {
     if (!response.ok) {
       const errorMessage = !Array.isArray(payload) ? payload.error : undefined;
       return NextResponse.json(
-        { error: errorMessage ?? 'Unable to generate AI coding tip.' },
-        { status: response.status },
+        {
+          tip: errorMessage ? cleanTip(errorMessage) || fallbackTip : fallbackTip,
+          provider: 'local',
+          model: 'curated-fallback',
+        },
+        { status: 200 },
       );
     }
 
     const rawTip = Array.isArray(payload) ? payload[0]?.generated_text ?? '' : '';
-    const tip = cleanTip(rawTip);
+    const generatedTip = cleanTip(rawTip);
 
-    if (!tip) {
+    if (!generatedTip) {
       return NextResponse.json(
-        { error: 'AI provider returned an empty tip. Try again.' },
-        { status: 502 },
+        {
+          tip: fallbackTip,
+          provider: 'local',
+          model: 'curated-fallback',
+        },
+        { status: 200 },
       );
     }
 
     return NextResponse.json(
       {
-        tip,
+        tip: generatedTip,
         provider: 'huggingface',
         model,
       },
       { status: 200 },
     );
   } catch {
-    return NextResponse.json({ error: 'Unable to generate AI coding tip.' }, { status: 500 });
+    return NextResponse.json(
+      {
+        tip: getFallbackTip(topic, seed),
+        provider: 'local',
+        model: 'curated-fallback',
+      },
+      { status: 200 },
+    );
   }
 }
